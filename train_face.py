@@ -94,23 +94,6 @@ class Model_factory(pl.LightningModule):
         y = torch.ones(B, 1).type_as(a)
         return self.criterionCosine(a, v, y)
     
-    def get_border_loss(self, frames, YT_frames):
-        B, T, C, H, W = frames.shape
-        return self.criterionL2(frames[:, :, :, : self.args.expansion, :], YT_frames[:, :, :, : self.args.expansion, :]) + \
-               self.criterionL2(frames[:, :, :, -self.args.expansion:, :], YT_frames[:, :, :, -self.args.expansion:, :]) + \
-               self.criterionL2(frames[:, :, :, self.args.expansion: -self.args.expansion, : self.args.expansion], YT_frames[:, :, :, self.args.expansion: -self.args.expansion, : self.args.expansion]) + \
-               self.criterionL2(frames[:, :, :, self.args.expansion: -self.args.expansion, -self.args.expansion:], YT_frames[:, :, :, self.args.expansion: -self.args.expansion, -self.args.expansion:])
-
-    def get_border_percept_loss(self, frames, YT_frames):
-        frames_cp = frames.clone()
-        YT_frames_cp = YT_frames.clone()
-        frames_cp[:, :, :, self.args.expansion: -self.args.expansion, self.args.expansion: -self.args.expansion] = 0
-        YT_frames_cp[:, :, :, self.args.expansion: -self.args.expansion, self.args.expansion: -self.args.expansion] = 0
-        VGGLoss = 0
-        for t in range(5):
-            VGGLoss += self.criterionVGG(frames_cp[:, t], YT_frames_cp[:, t])
-        return VGGLoss / 5
-
     def trainG(self, mel, input, gt, mel_forSync):
         G_losses = {}
 

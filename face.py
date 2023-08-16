@@ -67,6 +67,7 @@ class YOLOv8_face:
         # input_img = input_img.astype(np.float32) / 255.0
 
         blob = cv2.dnn.blobFromImage(input_img)
+        print(blob.shape, type(blob))
         self.net.setInput(blob)
         outputs = self.net.forward(self.net.getUnconnectedOutLayersNames())
         # if isinstance(outputs, tuple):
