@@ -5,11 +5,11 @@ import torch.nn.functional as F
 from models.utils import get_nonspade_norm_layer
 
 class MultiscaleDiscriminator(nn.Module):
-    def __init__(self, num_D=2, filter=32):
+    def __init__(self, num_D=2, filter=32, input_nc=3+1):
         super().__init__()
 
         for i in range(num_D):
-            subnetD = NLayerDiscriminator(filter=filter)
+            subnetD = NLayerDiscriminator(filter=filter, input_nc=input_nc)
             self.add_module('discriminator_{}'.format(i), subnetD)
 
     def downsample(self, input):

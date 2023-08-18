@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from models.sync_batchnorm import SynchronizedBatchNorm2d
+from .sync_batchnorm import SynchronizedBatchNorm2d
 import torch.nn.utils.spectral_norm as spectral_norm
 
 def get_nonspade_norm_layer(norm_type='instance'):
@@ -104,7 +104,6 @@ class SPADEResnetBlock(nn.Module):
         self.norm_0 = SPADE(norm_nc=fin, label_nc=1, norm_type='instance')
         self.norm_1 = SPADE(norm_nc=fmiddle, label_nc=1, norm_type='instance')
 
-
         self.actvn = nn.LeakyReLU(0.01, False)
 
         
@@ -116,6 +115,37 @@ class SPADEResnetBlock(nn.Module):
 
         dx = self.conv_0(self.actvn(self.norm_0(x, source)))
         dx = self.conv_1(self.actvn(self.norm_1(dx, source)))
+
+        out = x_s + dx
+        return out
+    
+class InstanceResnetBlock(nn.Module):
+    def __init__(self, fin, fout):
+        super().__init__()
+        self.learned_shortcut = (fin != fout)
+        fmiddle = min(fin, fout)
+
+        self.conv_0 = nn.Conv2d(fin, fmiddle, kernel_size=3, padding=1)
+        self.conv_1 = nn.Conv2d(fmiddle, fout, kernel_size=3, padding=1)
+        if self.learned_shortcut:
+            self.conv_s = nn.Conv2d(fin, fout, kernel_size=1, bias=False)
+
+        if self.learned_shortcut:
+            self.norm_s = nn.InstanceNorm2d(fin, affine=False)
+        self.norm_0 = nn.InstanceNorm2d(fin, affine=False)
+        self.norm_1 = nn.InstanceNorm2d(fmiddle, affine=False)
+
+        self.actvn = nn.LeakyReLU(0.01, False)
+
+        
+    def forward(self, x):
+        if self.learned_shortcut:
+            x_s = self.conv_s(self.norm_s(x))
+        else:
+            x_s = x
+
+        dx = self.conv_0(self.actvn(self.norm_0(x)))
+        dx = self.conv_1(self.actvn(self.norm_1(dx)))
 
         out = x_s + dx
         return out

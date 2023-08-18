@@ -17,10 +17,11 @@ def Unormalize(x):
 class TherDataset(Dataset):
     def __init__(self,
                  root, txt_path,
-                 img_resolution=[384, 512], si_resolution=[12, 16], face_resolution=[128, 128],
+                 img_resolution=[384, 512], si_resolution=[12, 16],
                  no_pair=False,
                  train=True):
 
+        self.root = root
         self.no_pair = no_pair
         self.train = train
         
@@ -42,17 +43,36 @@ class TherDataset(Dataset):
         img_path = source_path = self.paths[index]
         if self.no_pair:
             img_path = np.random.choice(self.paths)
+        ID = img_path.replace(self.root, '').split('/')[1]
+
+        # get wrong path
+        while True:
+            wrong_path = np.random.choice(self.paths)
+            if wrong_path.replace(self.root, '').split('/')[1] != ID:
+                break
+
+        # get pair path
+        while True:
+            pair_path = np.random.choice(self.paths)
+            if pair_path.replace(self.root, '').split('/')[1] == ID:
+                break
 
         img_path = "{}.jpg".format(img_path)
+        wrong_path = "{}.jpg".format(wrong_path)
+        pair_path = "{}.jpg".format(pair_path)
         source_path = "{}.png".format(source_path)
 
         img = Image.open(img_path)
+        wrong_img = Image.open(wrong_path)
+        pair_img = Image.open(pair_path)
         img = self.img_transforms(img)
+        wrong_img = self.img_transforms(wrong_img)
+        pair_img = self.img_transforms(pair_img)
 
         source_img = Image.open(source_path)
         source_img = self.si_transforms(source_img)
 
-        return img, source_img
+        return img, source_img, pair_img, wrong_img
 
     def __len__(self):
         return len(self.paths)
@@ -63,7 +83,7 @@ from TherAudio.data import audio
 class TherSeqDataset(Dataset):
     def __init__(self,
                  root, txt_path, audio_root, audio_txt_path,
-                 img_resolution=[384, 512], si_resolution=[12, 16], face_resolution=[128, 128],
+                 img_resolution=[384, 512], si_resolution=[12, 16],
                  no_pair=False,
                  sr=16000, fps=25, mel_step_size=16, T=5,
                  train=True):
@@ -181,7 +201,7 @@ import random
 class AudioDataset(Dataset):
     def __init__(self, root="/root/LRS2/mvlrs_v1/main", txt_path="/root/LRS2/trainlst.txt",
                  sr=16000, fps=25, mel_step_size=16, T=5,
-                 face_size=96, size=128,
+                 face_size=96,
                  train=True,
                  face_model_path="/root/TherAudio/weights/yolov8n-face.onnx",
                  YTface_root="/root/YouTubeFaces/frame_images_DB", YTface_txt="/root/YouTubeFaces/trainList.txt",
@@ -203,7 +223,6 @@ class AudioDataset(Dataset):
         self.mel_step_size = mel_step_size
         self.T = T
         self.face_size = face_size
-        self.size = size
 
         self.img_transforms = torchvision.transforms.Compose([
             torchvision.transforms.ToTensor(),
@@ -271,12 +290,6 @@ class AudioDataset(Dataset):
         faces = torch.cat(faces, dim=0)
         return faces
     
-    def paste_on_zeros(self, img):
-        zeros = torch.zeros([3, self.size, self.size])
-        new_imgs = zeros.clone()
-        new_imgs[:, self.expansion: self.expansion+self.face_size, self.expansion: self.expansion+self.face_size] = img
-        return new_imgs
-    
     def get_start_idx(self, lst):
         length = len(lst)
         idx = random.randrange(0, length-self.T)
@@ -308,16 +321,92 @@ class AudioDataset(Dataset):
 
     def __len__(self):
         return len(self.paths)
+    
+class BorderDataset(Dataset):
+    def __init__(self, root="/root/YouTubeFaces/frame_images_DB", txt_path="/root/YouTubeFaces/trainList.txt", return_img=False, face_size=96):
+        super().__init__()
+        self.root = root
+        self.return_img = return_img
+
+        lst = open_txt(txt_path)
+        paths = [os.path.join(root, p)+".labeled_faces.txt" for p in lst]
+        self.folders = []
+        for p in paths:
+            txt = open_txt(p)
+            self.folders.append(txt)
+
+        self.img_transforms = torchvision.transforms.Compose([
+            torchvision.transforms.ToTensor(),
+        ])
+
+        self.face_transforms = torchvision.transforms.Compose([
+            torchvision.transforms.Resize([face_size, face_size], antialias=True)
+        ])
+
+    def split_data(self, data):
+        path, _, x, y, w, h, _, _ = data.split(',')
+        path = path.replace('\\', '/')
+        path = os.path.join(self.root, path)
+
+        x, y, w, h = [int(i) for i in [x, y, w, h]]
         
+        return path, x, y, w, h
+    
+    def read_and_crop(self, path, x, y, w, h):
+        img = Image.open(path)
+        img = np.array(img)
+        img = self.img_transforms(img)
+        
+        x1 = x - w//2
+        y1 = y - h//2
+        x2 = x + w//2
+        y2 = y + h//2
+        if x1 < 0: x1 = 0
+        if y1 < 0: y1 = 0
+        face = img[:, y1: y2, x1: x2]
+        face = self.face_transforms(face)
+
+        return img, face
+        
+
+    def __getitem__(self, index):
+        folder = self.folders[index]
+        length = len(folder)
+
+        # get ref data
+        ref_idx = random.randrange(0, length-1)
+        ref_data = folder[ref_idx]
+
+        # get target data
+        while True:
+            target_idx = random.randrange(0, length-1)
+            if target_idx != ref_idx:
+                break
+        target_data = folder[target_idx]
+
+        ref_path, ref_x, ref_y, ref_w, ref_h = self.split_data(ref_data)
+        target_path, target_x, target_y, target_w, target_h = self.split_data(target_data)
+
+        ref_img, ref_face = self.read_and_crop(ref_path, ref_x, ref_y, ref_w, ref_h)
+        target_img, target_face = self.read_and_crop(target_path, target_x, target_y, target_w, target_h)
+
+        if self.return_img:
+            return [ref_img, ref_face], [target_img, target_face]
+        else:
+            return ref_face, target_face
+
+    def __len__(self):
+        return len(self.folders)
 
 
 if __name__ == '__main__':
-    # dataset = TherDataset(root="../../thermal_data", txt_path="../../thermal_data/trainList.txt",
+    # dataset = TherDataset(root="/root/thermal_data", txt_path="/root/thermal_data/trainList.txt",
     #                       no_pair=True)
-    dataset = TherSeqDataset(root="/root/thermal_data", txt_path="/root/thermal_data/trainList.txt",
-                             audio_root="/root/LRS2/mvlrs_v1/main", audio_txt_path="/root/LRS2/vallst.txt",
-                             no_pair=True, train=False)
+    # dataset = TherSeqDataset(root="/root/thermal_data", txt_path="/root/thermal_data/trainList.txt",
+    #                          audio_root="/root/LRS2/mvlrs_v1/main", audio_txt_path="/root/LRS2/vallst.txt",
+    #                          no_pair=True, train=False)
     # dataset = AudioDataset()
+    dataset = BorderDataset()
     for d in dataset:
         for i in d:
             print(i.shape)
