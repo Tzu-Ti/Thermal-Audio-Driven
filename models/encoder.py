@@ -38,7 +38,7 @@ class ConvEncoder(nn.Module):
     
 class FaceEncoder(nn.Module):
     """ Same architecture as the image discriminator """
-    def __init__(self, filter=32, z_dim=256):
+    def __init__(self, filter=64, z_dim=512):
         super().__init__()
 
         norm_layer = get_nonspade_norm_layer(norm_type='spectralinstance')

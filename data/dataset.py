@@ -376,22 +376,23 @@ class BorderDataset(Dataset):
         # get ref data
         ref_idx = random.randrange(0, length-1)
         ref_data = folder[ref_idx]
+        ref_path, ref_x, ref_y, ref_w, ref_h = self.split_data(ref_data)
+        ref_video_id = ref_path.split('/')[-2]
 
         # get target data
         while True:
             target_idx = random.randrange(0, length-1)
-            if target_idx != ref_idx:
+            target_data = folder[target_idx]
+            target_path, target_x, target_y, target_w, target_h = self.split_data(target_data)
+            target_video_id = target_path.split('/')[-2]
+            if target_idx != ref_idx and target_video_id == ref_video_id:
                 break
-        target_data = folder[target_idx]
-
-        ref_path, ref_x, ref_y, ref_w, ref_h = self.split_data(ref_data)
-        target_path, target_x, target_y, target_w, target_h = self.split_data(target_data)
-
+        
         ref_img, ref_face = self.read_and_crop(ref_path, ref_x, ref_y, ref_w, ref_h)
         target_img, target_face = self.read_and_crop(target_path, target_x, target_y, target_w, target_h)
 
         if self.return_img:
-            return [ref_img, ref_face], [target_img, target_face]
+            return [ref_img, ref_face], [target_img, target_face], [target_x, target_y, target_w, target_h]
         else:
             return ref_face, target_face
 

@@ -28,7 +28,7 @@ def parse():
     parser = argparse.ArgumentParser()
     # training setting
     parser.add_argument('--model_name', default='test')
-    parser.add_argument('--epochs', type=int, default=15)
+    parser.add_argument('--epochs', type=int, default=3000)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--lr', type=int, default=2e-4)
     # Model setting
@@ -37,6 +37,8 @@ def parse():
     parser.add_argument('--train', action="store_true")
     parser.add_argument('--test', action="store_true")
     parser.add_argument('--resume', action="store_true")
+    # visualization
+    parser.add_argument('--show_num', type=int, default=4)
 
     return parser.parse_args()
 
@@ -82,9 +84,9 @@ class Model_factory(pl.LightningModule):
         fake_image = self.generate(inputs)
         self.fake_image = fake_image
 
-        # inside loss
-        G_losses['IN_L1'], G_losses['IN_VGG'] = self.get_inside_loss(fake_image, target)
-        # border loss
+        # inside loss, inside like reference image
+        G_losses['IN_L1'], G_losses['IN_VGG'] = self.get_inside_loss(fake_image, ref)
+        # border loss, border like target image
         G_losses['BD_L1'], G_losses['BD_VGG'] = self.get_border_loss(fake_image, target)
 
         g_loss = sum(G_losses.values()).mean()
@@ -128,10 +130,18 @@ if __name__ == '__main__':
                                  batch_size=args.batch_size,
                                  shuffle=True, 
                                  num_workers=cpu_count())
+    valDataset = BorderDataset(root="/root/YouTubeFaces/frame_images_DB", txt_path="/root/YouTubeFaces/trainList.txt", return_img=True, face_size=96)
+    valDataloader = DataLoader(dataset=trainDataset,
+                               batch_size=1,
+                               shuffle=True, 
+                               num_workers=cpu_count())
 
     Model = Model_factory(args)
 
-    trainer = pl.Trainer(fast_dev_run=True, logger=tb_logger, accelerator='gpu', devices=[0, 1])
+    # trainer = pl.Trainer(fast_dev_run=True, logger=tb_logger, accelerator='gpu', devices=[0, 1])
+    trainer = pl.Trainer(max_epochs=args.epochs, check_val_every_n_epoch=1,
+                         logger=tb_logger, log_every_n_steps=5,
+                         strategy=DDPStrategy(find_unused_parameters=True))
 
     if args.train:
         trainer.fit(model=Model, train_dataloaders=trainDataloader) #, val_dataloaders=valDataloader)

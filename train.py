@@ -29,7 +29,7 @@ def parse():
     parser = argparse.ArgumentParser()
     # training setting
     parser.add_argument('--model_name', default='test')
-    parser.add_argument('--epochs', type=int, default=15)
+    parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--lr', type=int, default=2e-4)
     # Model setting
@@ -97,8 +97,8 @@ class Model_factory(pl.LightningModule):
         pred_fake, pred_real = self.discriminate(source_img, img, fake_image)
         G_losses['GAN'] = self.criterionGAN(pred_fake, True, for_discriminator=False)
 
-        # id_pred_fake, id_pred_real = self.discriminateIDD(img, fake_image, wrong_img)
-        # G_losses['IDGAN'] = self.criterionGAN(id_pred_fake, True, for_discriminator=False)
+        id_pred_fake, id_pred_real = self.discriminateIDD(fake_image, img, wrong_img)
+        G_losses['IDGAN'] = self.criterionGAN(id_pred_fake, True, for_discriminator=False)
 
         if not self.args.no_ganFeat_loss:
             num_D = len(pred_fake)
@@ -238,7 +238,7 @@ class Model_factory(pl.LightningModule):
             self.logger.experiment.add_images("Val/fake_image", Unormalize(self.fake_image[:self.args.show_num]), self.current_epoch)
 
     def test_step(self, batch, batch_idx):
-        img, source_img = batch
+        img, source_img, pair_img, wrong_img = batch
         fake_image, _ = self.generate(img, source_img)
 
         self.img = img

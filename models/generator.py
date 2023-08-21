@@ -52,7 +52,7 @@ class Generator(nn.Module):
         return x
     
 class FaceGenerator(nn.Module):
-    def __init__(self, filter=32, z_dim=256):
+    def __init__(self, filter=64, z_dim=512):
         super().__init__()
         self.filter = filter
 
